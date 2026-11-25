@@ -1,0 +1,445 @@
+{
+  "name": "Quick Money Log",
+  "short_name": "MoneyLog",
+  "description": "Track daily expenses, build savings goals, and protect your data with AES-256 encryption.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+const CACHE_NAME = 'quick-money-log-v1';
+const ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
+  );
+});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#059669" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Quick Money Log — Encrypted</title>
+  <link rel="icon" type="image/png" href="icon-512.png" />
+  <link rel="apple-touch-icon" href="icon-512.png" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-800 px-4 py-6">
+  <div class="max-w-lg mx-auto space-y-4">
+
+    <!-- 3. Top Ad Banner (View-Only for Users; Owner edits ADS array in code) -->
+    <section aria-label="Sponsored Ads" class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3.5 shadow-sm">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="inline-block rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">Ad</span>
+            <span id="ad-counter" class="text-[11px] font-medium text-amber-700">1 / 2</span>
+          </div>
+          <h2 id="ad-title" class="text-sm font-semibold text-slate-900 truncate">Smart Zero-Fee Savings Account</h2>
+          <p id="ad-body" class="text-xs text-slate-600 mt-0.5">Earn up to 6.5% p.a. on your idle cash with instant transfers.</p>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="prev-ad-btn" type="button" title="Previous ad" class="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer">‹</button>
+          <button id="next-ad-btn" type="button" title="Next ad" class="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer">›</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lock Screen (shown when data is encrypted & locked) -->
+    <section id="lock-screen" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center space-y-4">
+      <img src="icon-512.png" alt="Quick Money Log icon" class="mx-auto w-14 h-14 rounded-2xl object-cover shadow-sm" />
+      <div>
+        <h1 class="text-lg font-bold text-slate-900">Your Money Log is Encrypted</h1>
+        <p class="text-xs text-slate-500 mt-1">Enter your passcode to decrypt your expenses and savings.</p>
+      </div>
+      <form id="unlock-form" class="max-w-xs mx-auto space-y-3" novalidate>
+        <input
+          id="unlock-passcode-input"
+          type="password"
+          placeholder="Enter passcode"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+        <p id="unlock-error-msg" class="hidden text-xs font-medium text-rose-600" role="alert"></p>
+        <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 cursor-pointer">
+          Unlock App
+        </button>
+      </form>
+      <button id="lock-reset-btn" type="button" class="text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer">
+        Forgot passcode? Reset all data
+      </button>
+    </section>
+
+    <!-- Main App Card -->
+    <main id="app-main" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+
+      <!-- App Header & Currency Selector -->
+      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-3">
+          <img src="icon-512.png" alt="Quick Money Log logo" class="w-10 h-10 rounded-xl object-cover shadow-xs shrink-0" />
+          <div>
+            <h1 class="text-xl font-bold text-slate-900 leading-tight">Quick Money Log</h1>
+            <p class="text-xs text-slate-500">Track expenses &amp; build your savings</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            id="encryption-btn"
+            type="button"
+            class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            🔒 Encrypt
+          </button>
+          <select
+            id="currency-select"
+            aria-label="Currency"
+            class="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+          >
+            <option value="INR">INR (₹)</option>
+            <option value="USD">USD ($)</option>
+            <option value="JPY">JPY (¥)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+          </select>
+        </div>
+      </header>
+
+      <!-- Overview Totals Bar -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-100 p-3 flex items-center justify-between gap-2">
+          <div>
+            <span class="block text-[11px] font-semibold uppercase tracking-wider text-rose-500">Total Spent</span>
+            <span id="total-amount" class="text-xl font-bold text-rose-600">₹0.00</span>
+          </div>
+          <div class="w-8 h-8 rounded-lg bg-rose-200/60 flex items-center justify-center text-rose-600 shrink-0" aria-hidden="true">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+          </div>
+        </div>
+        <div class="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-100 p-3 flex items-center justify-between gap-2">
+          <div>
+            <span class="block text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Total Saved</span>
+            <span id="total-saved" class="text-xl font-bold text-emerald-600">₹0.00</span>
+          </div>
+          <div class="w-8 h-8 rounded-lg bg-emerald-200/60 flex items-center justify-center text-emerald-700 shrink-0" aria-hidden="true">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spending vs. Savings Visual Bar -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-[11px] font-medium text-slate-500">
+          <span>Spending vs. Savings</span>
+          <span id="ratio-label">Add an entry to see your split</span>
+        </div>
+        <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden flex">
+          <div id="ratio-spent-bar" class="h-full bg-rose-500 transition-all duration-300" style="width: 0%"></div>
+          <div id="ratio-saved-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Section Tabs -->
+      <nav class="flex rounded-xl bg-slate-100 p-1" aria-label="App sections">
+        <button
+          id="tab-expenses"
+          type="button"
+          class="flex-1 rounded-lg bg-white py-2 text-sm font-semibold text-slate-900 shadow-xs transition-all cursor-pointer"
+        >
+          1. Expenses
+        </button>
+        <button
+          id="tab-savings"
+          type="button"
+          class="flex-1 rounded-lg py-2 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
+        >
+          2. Savings
+        </button>
+      </nav>
+
+      <!-- 1. EXPENSES SECTION -->
+      <section id="section-expenses" class="space-y-5">
+        <form id="expense-form" class="space-y-3" novalidate>
+          <div>
+            <label for="desc-input" class="block text-sm font-medium text-slate-700 mb-1">What did I buy?</label>
+            <input
+              id="desc-input"
+              type="text"
+              placeholder="e.g., Coffee, Groceries, Metro ticket"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+              required
+            />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="amount-input" class="block text-sm font-medium text-slate-700 mb-1">
+                Amount (<span class="currency-symbol">₹</span>)
+              </label>
+              <input
+                id="amount-input"
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="e.g., 150"
+                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                required
+              />
+            </div>
+            <div>
+              <label for="category-select" class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+              <select
+                id="category-select"
+                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                <option value="Food">🍔 Food</option>
+                <option value="Transport">🚌 Transport</option>
+                <option value="Shopping">🛍️ Shopping</option>
+                <option value="Bills">💡 Bills</option>
+                <option value="Other">📌 Other</option>
+              </select>
+            </div>
+          </div>
+
+          <p id="error-msg" class="hidden text-xs font-medium text-rose-600" role="alert"></p>
+
+          <button
+            type="submit"
+            class="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 active:bg-slate-950 transition-colors cursor-pointer"
+          >
+            Add Expense
+          </button>
+        </form>
+
+        <!-- Visual Category Chart -->
+        <div id="chart-card" class="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Spending by Category</h2>
+            <span id="chart-top-cat" class="text-[11px] font-medium text-slate-400">No data yet</span>
+          </div>
+          <div id="chart-empty" class="py-5 text-center text-xs text-slate-400">
+            Add expenses to see your visual category chart.
+          </div>
+          <div id="chart-wrap" class="hidden relative h-44">
+            <canvas id="category-chart"></canvas>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h2 id="list-heading" class="text-sm font-semibold text-slate-700">Expense History</h2>
+            <span id="expense-count" class="text-xs text-slate-400">0 items</span>
+          </div>
+          <div id="category-filters" class="flex flex-wrap gap-1.5 mb-3"></div>
+          <ul id="expense-list" class="divide-y divide-slate-100">
+            <li id="empty-state" class="py-6 text-center text-sm text-slate-400">
+              No expenses yet. Add your first purchase above!
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 2. SAVINGS SECTION -->
+      <section id="section-savings" class="hidden space-y-5">
+        <!-- Add to Savings Form -->
+        <form id="savings-form" class="space-y-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200/80" novalidate>
+          <div>
+            <label for="savings-bucket-select" class="block text-sm font-medium text-slate-700 mb-1">Choose Savings Section</label>
+            <select
+              id="savings-bucket-select"
+              class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            ></select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="savings-amount-input" class="block text-sm font-medium text-slate-700 mb-1">
+                Amount (<span class="currency-symbol">₹</span>)
+              </label>
+              <input
+                id="savings-amount-input"
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="e.g., 500"
+                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label for="savings-note-input" class="block text-sm font-medium text-slate-700 mb-1">Note (optional)</label>
+              <input
+                id="savings-note-input"
+                type="text"
+                placeholder="e.g., Weekly stash"
+                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <p id="savings-error-msg" class="hidden text-xs font-medium text-rose-600" role="alert"></p>
+
+          <button
+            type="submit"
+            class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 active:bg-emerald-800 transition-colors cursor-pointer"
+          >
+            Add to Savings
+          </button>
+        </form>
+
+        <!-- Savings Sections Grid -->
+        <div>
+          <div class="flex items-center justify-between mb-2.5">
+            <h2 class="text-sm font-semibold text-slate-700">Your Savings Sections</h2>
+            <button id="toggle-new-bucket" type="button" class="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer">
+              + New Section
+            </button>
+          </div>
+
+          <!-- Optional Add New Savings Section -->
+          <form id="new-bucket-form" class="hidden mb-3 flex gap-2" novalidate>
+            <input
+              id="new-bucket-input"
+              type="text"
+              placeholder="Section name (e.g., New Bike)"
+              class="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 cursor-pointer">
+              Create
+            </button>
+          </form>
+
+          <div id="savings-buckets-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+        </div>
+
+        <!-- Recent Savings Deposits -->
+        <div>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Recent Savings Activity</h3>
+          <ul id="savings-list" class="divide-y divide-slate-100">
+            <li class="py-4 text-center text-xs text-slate-400">
+              No savings deposits yet. Pick a section above to start!
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Footer: Encryption status, CSV Export & Reset -->
+      <footer class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+        <span id="storage-status-label">Auto-saved (unencrypted)</span>
+        <div class="flex items-center gap-3">
+          <button id="export-csv-btn" type="button" class="font-semibold text-slate-600 hover:text-emerald-700 transition-colors cursor-pointer">
+            Export CSV
+          </button>
+          <button id="reset-data-btn" type="button" class="font-medium text-slate-400 hover:text-rose-600 transition-colors cursor-pointer">
+            Reset Saved Data
+          </button>
+        </div>
+      </footer>
+    </main>
+
+    <!-- Set Passcode / Enable Encryption Modal -->
+    <div id="passcode-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" role="dialog" aria-modal="true" aria-labelledby="passcode-modal-title">
+      <div class="w-full max-w-xs rounded-2xl bg-white p-5 shadow-lg border border-slate-200 space-y-3">
+        <h2 id="passcode-modal-title" class="text-base font-bold text-slate-900">Encrypt Your Data</h2>
+        <p class="text-xs text-slate-500">Set a passcode to encrypt your saved expenses &amp; savings with AES-256 in this browser.</p>
+        <form id="passcode-form" class="space-y-2.5" novalidate>
+          <input
+            id="new-passcode-input"
+            type="password"
+            placeholder="Choose a passcode (4+ chars)"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            id="confirm-passcode-input"
+            type="password"
+            placeholder="Confirm passcode"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <p id="passcode-error-msg" class="hidden text-xs font-medium text-rose-600" role="alert"></p>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button id="cancel-passcode-btn" type="button" class="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+            <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 cursor-pointer">Enable Encryption</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- In-Page Reset Confirmation Modal -->
+    <div id="reset-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" role="dialog" aria-modal="true" aria-labelledby="reset-modal-title">
+      <div class="w-full max-w-xs rounded-2xl bg-white p-5 shadow-lg border border-slate-200 space-y-3">
+        <h2 id="reset-modal-title" class="text-base font-bold text-slate-900">Reset all saved data?</h2>
+        <p class="text-xs text-slate-500">This clears your expenses, savings deposits, custom sections, and passcode from this browser.</p>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button id="cancel-reset-btn" type="button" class="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+          <button id="confirm-reset-btn" type="button" class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 cursor-pointer">Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- 1. Currency & Owner-Controlled Ads ---
+    const CURRENCIES = {
+      INR: { symbol: '₹', decimals: 2 },
+      USD: { symbol: '$', decimals: 2 },
+      JPY: { symbol: '¥', decimals: 0 },
+      EUR: { symbol: '€', decimals: 2 },
+      GBP: { symbol: '£', decimals: 2 }
+    };
+
+    // Owner-only ads: edit this list directly in the code before sharing!
+    const ADS = [
+      {
+        title: 'Smart Zero-Fee Savings Account',
+        body: 'Earn up to 6.5% p.a. on your idle cash with instant transfers.'
+      },
+      {
+        title: 'Track Every Rupee, Dol
